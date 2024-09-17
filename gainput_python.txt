@@ -1,0 +1,38 @@
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
+
+# Your GA4 Property ID
+PROPERTY_ID = 'YOUR_GA4_PROPERTY_ID'
+
+# Create a client
+client = BetaAnalyticsDataClient()
+
+def run_ga4_report():
+    # Define the request to pull the GA4 report
+    request = RunReportRequest(
+        property=f"properties/{PROPERTY_ID}",
+        dimensions=[
+            Dimension(name="date"),
+            Dimension(name="hostName"),
+            Dimension(name="pagePath"),
+            Dimension(name="customUser:platformUserId")
+        ],
+        metrics=[
+            Metric(name="userEngagementDuration")
+        ],
+        date_ranges=[DateRange(start_date="90daysAgo", end_date="yesterday")]
+    )
+    
+    # Make the request to Google Analytics
+    response = client.run_report(request)
+    
+    # Print the results
+    for row in response.rows:
+        print(f"Date: {row.dimension_values[0].value}, "
+              f"HostName: {row.dimension_values[1].value}, "
+              f"PagePath: {row.dimension_values[2].value}, "
+              f"PlatformUserId: {row.dimension_values[3].value}, "
+              f"User Engagement Duration: {row.metric_values[0].value}")
+
+if __name__ == "__main__":
+    run_ga4_report()
