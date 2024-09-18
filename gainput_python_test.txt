@@ -1,0 +1,18 @@
+from google.oauth2 import service_account
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+
+# Provide the path to your JSON key
+credentials = service_account.Credentials.from_service_account_file('/absolute/path/to/your-service-account-key.json')
+
+# Create a client using the credentials
+client = BetaAnalyticsDataClient(credentials=credentials)
+
+# Make an example API call
+response = client.run_report({
+    "property": "properties/YOUR_PROPERTY_ID",
+    "date_ranges": [{"start_date": "90daysAgo", "end_date": "yesterday"}],
+    "metrics": [{"name": "userEngagementDuration"}],
+    "dimensions": [{"name": "date"}, {"name": "pagePath"}],
+})
+
+print(response)
