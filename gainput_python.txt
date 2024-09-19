@@ -1,38 +1,36 @@
+import csv
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
-from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
+from google.oauth2 import service_account
 
-# Your GA4 Property ID
-PROPERTY_ID = 'YOUR_GA4_PROPERTY_ID'
+# Path to your JSON key
+credentials = service_account.Credentials.from_service_account_file('/path/to/your-service-account-key.json')
 
-# Create a client
-client = BetaAnalyticsDataClient()
+# Create a client with the credentials
+client = BetaAnalyticsDataClient(credentials=credentials)
 
-def run_ga4_report():
-    # Define the request to pull the GA4 report
-    request = RunReportRequest(
-        property=f"properties/{PROPERTY_ID}",
-        dimensions=[
-            Dimension(name="date"),
-            Dimension(name="hostName"),
-            Dimension(name="pagePath"),
-            Dimension(name="customUser:platformUserId")
-        ],
-        metrics=[
-            Metric(name="userEngagementDuration")
-        ],
-        date_ranges=[DateRange(start_date="90daysAgo", end_date="yesterday")]
-    )
-    
-    # Make the request to Google Analytics
-    response = client.run_report(request)
-    
-    # Print the results
+# Make an API request to fetch the user engagement duration and other dimensions/metrics
+response = client.run_report({
+    "property": "properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
+    "date_ranges": [{"start_date": "90daysAgo", "end_date": "yesterday"}],
+    "metrics": [{"name": "userEngagementDuration"}],
+    "dimensions": [{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
+})
+
+# Specify the output CSV file
+csv_file_path = 'user_engagement_data.csv'
+
+# Prepare headers from metrics and dimensions
+headers = ["Date", "Host Name", "Page Path", "Platform User ID", "User Engagement Duration"]
+
+# Write the data to a CSV file
+with open(csv_file_path, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    # Write the headers to the CSV
+    writer.writerow(headers)
+
+    # Write each row of data
     for row in response.rows:
-        print(f"Date: {row.dimension_values[0].value}, "
-              f"HostName: {row.dimension_values[1].value}, "
-              f"PagePath: {row.dimension_values[2].value}, "
-              f"PlatformUserId: {row.dimension_values[3].value}, "
-              f"User Engagement Duration: {row.metric_values[0].value}")
+        writer.writerow([dimension_value.value for dimension_value in row.dimension_values] + 
+                        [metric_value.value for metric_value in row.metric_values])
 
-if __name__ == "__main__":
-    run_ga4_report()
+print(f"Data has been written to {csv_file_path}")
