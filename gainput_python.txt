@@ -8,29 +8,52 @@ credentials = service_account.Credentials.from_service_account_file('/path/to/yo
 # Create a client with the credentials
 client = BetaAnalyticsDataClient(credentials=credentials)
 
-# Make an API request to fetch the user engagement duration and other dimensions/metrics
-response = client.run_report({
-    "property": "properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
-    "date_ranges": [{"start_date": "90daysAgo", "end_date": "yesterday"}],
-    "metrics": [{"name": "userEngagementDuration"}],
-    "dimensions": [{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
-})
-
 # Specify the output CSV file
-csv_file_path = 'user_engagement_data.csv'
+csv_file_path = 'user_engagement_data_pipe_delimited.csv'
 
 # Prepare headers from metrics and dimensions
-headers = ["Date", "Host Name", "Page Path", "Platform User ID", "User Engagement Duration"]
+headers = ["Date", "Host Name", "Page Path", "Platform User ID", "User Engagement Duration", "Program ID", "Student ID"]
 
-# Write the data to a CSV file
+# Write the data to a pipe-delimited CSV file
 with open(csv_file_path, mode='w', newline='') as file:
-    writer = csv.writer(file)
+    writer = csv.writer(file, delimiter='|')  # Use pipe as the delimiter
     # Write the headers to the CSV
     writer.writerow(headers)
 
-    # Write each row of data
-    for row in response.rows:
-        writer.writerow([dimension_value.value for dimension_value in row.dimension_values] + 
-                        [metric_value.value for metric_value in row.metric_values])
+    # Initialize the nextPageToken variable
+    next_page_token = None
+
+    while True:
+        # Make an API request to fetch user engagement duration and other dimensions/metrics
+        response = client.run_report({
+            "property": "properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
+            "date_ranges": [{"start_date": "90daysAgo", "end_date": "yesterday"}],
+            "metrics": [{"name": "userEngagementDuration"}],
+            "dimensions": [{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
+            "page_size": 1000,  # Set the page size limit
+            "page_token": next_page_token  # Pass the nextPageToken to fetch the next batch
+        })
+
+        # Write each row of data
+        for row in response.rows:
+            # Replace "(not set)" with a blank string for pagePath and customUser:platformUserId
+            dimension_values = [dimension_value.value if dimension_value.value != "(not set)" else "" 
+                                for dimension_value in row.dimension_values]
+            
+            # Placeholder values for programId and studentId (write blank values for now)
+            program_id = ""
+            student_id = ""
+            
+            # Combine dimension and metric values for writing, adding blank programId and studentId
+            writer.writerow(dimension_values + 
+                            [metric_value.value for metric_value in row.metric_values] + 
+                            [program_id, student_id])
+
+        # Check if there are more pages
+        next_page_token = response.next_page_token
+
+        # Break the loop if there are no more pages
+        if not next_page_token:
+            break
 
 print(f"Data has been written to {csv_file_path}")
