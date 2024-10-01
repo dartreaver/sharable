@@ -1,5 +1,8 @@
 import csv
+import time
+from datetime import datetime, timedelta
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import RunReportRequest
 from google.oauth2 import service_account
 
 # Path to your JSON key
@@ -8,52 +11,76 @@ credentials = service_account.Credentials.from_service_account_file('/path/to/yo
 # Create a client with the credentials
 client = BetaAnalyticsDataClient(credentials=credentials)
 
-# Specify the output CSV file
-csv_file_path = 'user_engagement_data_pipe_delimited.csv'
+# Function to fetch data with retry logic
+def fetch_with_retry(client, request, retries=3, backoff_factor=2):
+    for attempt in range(retries):
+        try:
+            return client.run_report(request=request)
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(backoff_factor ** attempt)  # Exponential backoff
+            else:
+                raise
 
 # Prepare headers from metrics and dimensions
 headers = ["Date", "Host Name", "Page Path", "Platform User ID", "User Engagement Duration", "Program ID", "Student ID"]
 
-# Write the data to a pipe-delimited CSV file
-with open(csv_file_path, mode='w', newline='') as file:
-    writer = csv.writer(file, delimiter='|')  # Use pipe as the delimiter
-    # Write the headers to the CSV
-    writer.writerow(headers)
+# Generate the last 90 days of dates
+start_date = datetime.now() - timedelta(days=90)
+end_date = datetime.now()
 
-    # Initialize the nextPageToken variable
-    next_page_token = None
+# Iterate over each day in the 90-day range
+for day in range(90):
+    current_date = (start_date + timedelta(days=day)).strftime('%Y-%m-%d')
+    
+    # Create a unique CSV file for each day
+    csv_file_path = f'user_engagement_data_{current_date}.csv'
+    
+    # Write the data to a pipe-delimited CSV file
+    with open(csv_file_path, mode='w', newline='') as file:
+        writer = csv.writer(file, delimiter='|')  # Use pipe as the delimiter
+        # Write the headers to the CSV
+        writer.writerow(headers)
+        
+        # Initialize offset and limit for pagination
+        offset = 0
+        limit = 1000
+        
+        while True:
+            # Make an API request to fetch user engagement duration and other dimensions/metrics for the current date
+            request = RunReportRequest(
+                property="properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
+                date_ranges=[{"start_date": current_date, "end_date": current_date}],
+                metrics=[{"name": "userEngagementDuration"}],
+                dimensions=[{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
+                limit=limit,  # Set the number of rows per request
+                offset=offset  # Fetch next set of rows using offset
+            )
 
-    while True:
-        # Make an API request to fetch user engagement duration and other dimensions/metrics
-        response = client.run_report({
-            "property": "properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
-            "date_ranges": [{"start_date": "90daysAgo", "end_date": "yesterday"}],
-            "metrics": [{"name": "userEngagementDuration"}],
-            "dimensions": [{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
-            "page_size": 1000,  # Set the page size limit
-            "page_token": next_page_token  # Pass the nextPageToken to fetch the next batch
-        })
-
-        # Write each row of data
-        for row in response.rows:
-            # Replace "(not set)" with a blank string for pagePath and customUser:platformUserId
-            dimension_values = [dimension_value.value if dimension_value.value != "(not set)" else "" 
-                                for dimension_value in row.dimension_values]
+            # Fetch data using retry logic
+            response = fetch_with_retry(client, request)
             
-            # Placeholder values for programId and studentId (write blank values for now)
-            program_id = ""
-            student_id = ""
-            
-            # Combine dimension and metric values for writing, adding blank programId and studentId
-            writer.writerow(dimension_values + 
-                            [metric_value.value for metric_value in row.metric_values] + 
-                            [program_id, student_id])
+            # Write each row of data
+            for row in response.rows:
+                # Replace "(not set)" with a blank string for pagePath and customUser:platformUserId
+                dimension_values = [dimension_value.value if dimension_value.value != "(not set)" else "" 
+                                    for dimension_value in row.dimension_values]
+                
+                # Placeholder values for programId and studentId (write blank values for now)
+                program_id = ""
+                student_id = ""
+                
+                # Combine dimension and metric values for writing, adding blank programId and studentId
+                writer.writerow(dimension_values + 
+                                [metric_value.value for metric_value in row.metric_values] + 
+                                [program_id, student_id])
 
-        # Check if there are more pages
-        next_page_token = response.next_page_token
+            # If fewer rows are returned than the limit, we've fetched all the data for the day
+            if len(response.rows) < limit:
+                break
 
-        # Break the loop if there are no more pages
-        if not next_page_token:
-            break
+            # Increment the offset for the next request
+            offset += limit
 
-print(f"Data has been written to {csv_file_path}")
+    print(f"Data for {current_date} has been written to {csv_file_path}")
