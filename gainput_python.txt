@@ -24,7 +24,11 @@ def fetch_with_retry(client, request, retries=3, backoff_factor=2):
                 raise
 
 # Prepare headers from metrics and dimensions
-headers = ["Date", "Host Name", "Page Path", "Platform User ID", "User Engagement Duration", "Program ID", "Student ID"]
+headers = [
+    "Date", "Host Name", "Page Path", "Unified Screen Class", 
+    "Program ID", "Segment ID", "User ID", "Student ID", 
+    "Engagement Duration"
+]
 
 # Generate the last 90 days of dates
 start_date = datetime.now() - timedelta(days=90)
@@ -53,7 +57,11 @@ for day in range(90):
                 property="properties/YOUR_PROPERTY_ID",  # Replace with your Google Analytics Property ID
                 date_ranges=[{"start_date": current_date, "end_date": current_date}],
                 metrics=[{"name": "userEngagementDuration"}],
-                dimensions=[{"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, {"name": "customUser:platformUserId"}],
+                dimensions=[
+                    {"name": "date"}, {"name": "hostName"}, {"name": "pagePath"}, 
+                    {"name": "unifiedScreenClass"}, {"name": "programId"}, 
+                    {"name": "segmentId"}, {"name": "customUser:platformUserId"}
+                ],
                 limit=limit,  # Set the number of rows per request
                 offset=offset  # Fetch next set of rows using offset
             )
@@ -61,20 +69,28 @@ for day in range(90):
             # Fetch data using retry logic
             response = fetch_with_retry(client, request)
             
-            # Write each row of data
+            # Write each row of data in the order defined in the headers
             for row in response.rows:
-                # Replace "(not set)" with a blank string for pagePath and customUser:platformUserId
-                dimension_values = [dimension_value.value if dimension_value.value != "(not set)" else "" 
-                                    for dimension_value in row.dimension_values]
+                # Extract data in the correct order and replace "(not set)" with an empty string
+                date = row.dimension_values[0].value if row.dimension_values[0].value != "(not set)" else ""
+                host_name = row.dimension_values[1].value if row.dimension_values[1].value != "(not set)" else ""
+                page_path = row.dimension_values[2].value if row.dimension_values[2].value != "(not set)" else ""
+                unified_screen_class = row.dimension_values[3].value if row.dimension_values[3].value != "(not set)" else ""
+                program_id = row.dimension_values[4].value if row.dimension_values[4].value != "(not set)" else ""
+                segment_id = row.dimension_values[5].value if row.dimension_values[5].value != "(not set)" else ""
+                user_id = row.dimension_values[6].value if row.dimension_values[6].value != "(not set)" else ""
                 
-                # Placeholder values for programId and studentId (write blank values for now)
-                program_id = ""
+                # Placeholder for Student ID as no field for it, will keep it blank
                 student_id = ""
                 
-                # Combine dimension and metric values for writing, adding blank programId and studentId
-                writer.writerow(dimension_values + 
-                                [metric_value.value for metric_value in row.metric_values] + 
-                                [program_id, student_id])
+                engagement_duration = row.metric_values[0].value
+
+                # Write the data to the CSV in the correct order
+                writer.writerow([
+                    date, host_name, page_path, unified_screen_class, 
+                    program_id, segment_id, user_id, student_id, 
+                    engagement_duration
+                ])
 
             # If fewer rows are returned than the limit, we've fetched all the data for the day
             if len(response.rows) < limit:
