@@ -1,0 +1,68 @@
+
+-- Step 1: Insert new records (not present in execprod.stg_course_registrations_history_test)
+INSERT INTO execprod.stg_course_registrations_history_test (
+    ID,
+    User_ID,
+    Status,
+    Created_Date,
+    Updated_Date,
+    Valid_From,
+    Valid_To,						--Make sure your CREATE TABLE DDL has this field included, it's how you can flag what's the 
+    Is_Active						--Make sure your CREATE TABLE DDL has this field included, it's how you can flag what's the 
+)
+SELECT
+    stg.ID 							--This is the Course_Registration_ID (but its called ID on the course reg table)
+    stg.User_ID,
+    stg.Status,
+    stg.Created_Date,
+    stg.Updated_Date,
+    CURRENT_DATE AS Valid_From,
+    NULL AS Valid_To,				--Make sure your CREATE TABLE DDL has this field included, it's how you can flag what's the 
+    TRUE AS Is_Active				--Make sure your CREATE TABLE DDL has this field included, it's how you can flag what's the 
+FROM execprod.stg_course_registrations stg
+LEFT JOIN execprod.stg_course_registrations_history_test hist
+    ON stg.ID = hist.ID
+WHERE hist.ID IS NULL;
+
+-------------------------------------------------------------
+-- Step 2: Handle updates for existing records with changes
+-- Mark existing records as inactive when there are changes.
+-------------------------------------------------------------
+UPDATE execprod.stg_course_registrations_history_test
+SET
+    Valid_To = CURRENT_DATE
+    Is_Active = FALSE
+FROM execprod.stg_course_registrations stg
+WHERE execprod.stg_course_registrations_history_test.ID = stg.ID
+    AND execprod.stg_course_registrations_history_test.Is_Active = TRUE
+    AND (
+        execprod.stg_course_registrations_history_test.Updated_Date <> stg.Updated_Date
+    );
+
+-- Step 3: Insert new version of updated records from Step 2.
+INSERT INTO execprod.stg_course_registrations_history_test (
+    ID,
+    User_ID,
+    Status,
+    Created_Date,
+    Updated_Date,
+    Valid_From,
+    Valid_To,
+    Is_Active				
+)
+SELECT
+    stg.ID,
+    stg.User_ID,
+    stg.Status,
+    stg.Created_Date,
+    stg.Updated_Date,
+    CURRENT_DATE AS Valid_From,
+    NULL AS Valid_To,
+    TRUE AS Is_Active
+FROM execprod.stg_course_registrations stg
+LEFT JOIN execprod.stg_course_registrations_history_test hist
+    ON stg.ID = hist.ID
+    AND hist.Is_Active = TRUE
+WHERE (											
+        hist.Updated_Date > stg.Updated_Date				--Play with this, you can do greater than or <> does not equal
+    );
